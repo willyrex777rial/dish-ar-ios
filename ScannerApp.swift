@@ -69,21 +69,11 @@ struct ContentView: View {
             .navigationTitle("Dish Scanner")
             .sheet(isPresented: $isScanning) {
                 if let session = captureSessionManager.session {
-                    ObjectCaptureViewContainer(session: session)
-                        .overlay(
-                            VStack {
-                                Spacer()
-                                Button("Finish Scan") {
-                                    isScanning = false
-                                    captureSessionManager.finishScanning()
-                                }
-                                .padding()
-                                .background(Color.blue)
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
-                                .padding(.bottom, 30)
-                            }
-                        )
+                    ObjectCaptureViewContainer(
+                        session: session,
+                        isScanning: $isScanning,
+                        captureSessionManager: captureSessionManager
+                    )
                 } else {
                     Text("Initializing Camera...")
                 }
@@ -97,14 +87,74 @@ import RealityKit
 #if os(iOS) && !targetEnvironment(simulator)
 struct ObjectCaptureViewContainer: View {
     let session: ObjectCaptureSession
+    @Binding var isScanning: Bool
+    @ObservedObject var captureSessionManager: CaptureSessionManager
     
     var body: some View {
-        ObjectCaptureView(session: session)
+        ZStack {
+            ObjectCaptureView(session: session)
+
+            VStack {
+                Spacer()
+
+                if let feedback = captureSessionManager.sessionFeedback.first {
+                    Text(feedbackDescription(for: feedback))
+                        .padding()
+                        .background(Color.black.opacity(0.7))
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                        .padding(.bottom, 10)
+                }
+
+                if case .ready = captureSessionManager.sessionState {
+                    Button("Continue") {
+                        session.startDetecting()
+                    }
+                    .padding()
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                    .padding(.bottom, 30)
+                } else if case .detecting = captureSessionManager.sessionState {
+                    Button("Start Capture") {
+                        session.startCapturing()
+                    }
+                    .padding()
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                    .padding(.bottom, 30)
+                } else if captureSessionManager.userCompletedScanPass {
+                    Button("Finish Scan") {
+                        isScanning = false
+                        captureSessionManager.finishScanning()
+                    }
+                    .padding()
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                    .padding(.bottom, 30)
+                }
+            }
+        }
+    }
+
+    private func feedbackDescription(for feedback: ObjectCaptureSession.Feedback) -> String {
+        switch feedback {
+        case .objectTooFar: return "Move Closer"
+        case .objectTooClose: return "Move Farther Away"
+        case .environmentTooDark: return "More Light Needed"
+        case .movingTooFast: return "Move Slower"
+        case .outOfFieldOfView: return "Keep Object in Frame"
+        default: return "Adjust Camera"
+        }
     }
 }
 #else
 struct ObjectCaptureViewContainer: View {
     let session: Any
+    @Binding var isScanning: Bool
+    var captureSessionManager: CaptureSessionManager
     
     var body: some View {
         Text("Object Capture is not available on this device or simulator.")
