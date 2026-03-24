@@ -10,7 +10,12 @@ class CaptureSessionManager: ObservableObject {
     @Published var dishName: String = ""
     @Published var session: ObjectCaptureSession?
     
+    @Published var sessionState: ObjectCaptureSession.CaptureState?
+    @Published var sessionFeedback: Set<ObjectCaptureSession.Feedback> = []
+    @Published var userCompletedScanPass = false
+
     private var supabaseManager = SupabaseManager()
+    private var cancellables = Set<AnyCancellable>()
     private var logger = Logger(subsystem: "com.restaurant.scanner", category: "CaptureSessionManager")
     
     private let checkpointDirectory: URL = {
@@ -31,6 +36,10 @@ class CaptureSessionManager: ObservableObject {
         scannedDishUrl = nil
         isProcessing = false
         session = nil
+        sessionState = nil
+        sessionFeedback = []
+        userCompletedScanPass = false
+        cancellables.removeAll()
     }
     
     func startScanning() {
@@ -43,7 +52,30 @@ class CaptureSessionManager: ObservableObject {
         configuration.checkpointDirectory = checkpointDirectory
         
         // Start new capture session
-        session = ObjectCaptureSession()
+        let newSession = ObjectCaptureSession()
+
+        newSession.$state
+            .receive(on: RunLoop.main)
+            .sink { [weak self] state in
+                self?.sessionState = state
+            }
+            .store(in: &cancellables)
+
+        newSession.$feedback
+            .receive(on: RunLoop.main)
+            .sink { [weak self] feedback in
+                self?.sessionFeedback = feedback
+            }
+            .store(in: &cancellables)
+
+        newSession.$userCompletedScanPass
+            .receive(on: RunLoop.main)
+            .sink { [weak self] completed in
+                self?.userCompletedScanPass = completed
+            }
+            .store(in: &cancellables)
+
+        session = newSession
         session?.start(imagesDirectory: imagesDirectory, configuration: configuration)
         logger.info("Started ObjectCaptureSession.")
     }
